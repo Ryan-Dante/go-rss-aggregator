@@ -1,15 +1,25 @@
 package main
 
 import (
+	"database/sql"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
 
+	"github.com/Ryan-Dante/go-rss-aggregator/internal/database"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/cors"
 	"github.com/joho/godotenv"
+
+	// Import the postgres driver
+	_ "github.com/lib/pq"
 )
+
+type apiConfig struct {
+	// Holds the database connection
+	DB *database.Queries
+}
 
 func main() {
 	// Load environment variables from .env file
@@ -18,6 +28,22 @@ func main() {
 	portString := os.Getenv("PORT")
 	if portString == "" {
 		log.Fatal("PORT environment variable not set")
+	}
+
+	dbURL := os.Getenv("DB_URL")
+	if dbURL == "" {
+		log.Fatal("dbURL is not found in the environment variables")
+	}
+
+	// Connect to the database
+	conn, err := sql.Open("postgres", dbURL)
+	if err != nil {
+		log.Fatal("Can't connect to the database")
+	}
+
+	// Convert database connection
+	apiCfg := &apiConfig{
+		DB: database.New(conn),
 	}
 
 	router := chi.NewRouter()
@@ -34,6 +60,8 @@ func main() {
 	// Only sends a get request to check if the server is up
 	v1Router.Get("/healthz", handlerReadiness)
 	v1Router.Get("/err", handlerErr)
+	v1Router.Post("/users", apiCfg.handlerCreateUser)
+
 	router.Mount("/v1", v1Router)
 
 	svr := &http.Server{
@@ -42,7 +70,7 @@ func main() {
 	}
 
 	log.Printf("Starting server on port %s", portString)
-	err := svr.ListenAndServe()
+	err = svr.ListenAndServe()
 	if err != nil {
 		log.Fatal(err)
 	}
